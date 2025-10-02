@@ -1,9 +1,9 @@
 package main
 
-
 import (
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/gclkaze/DockerServer/dockerserver"
 	"github.com/gin-gonic/gin"
@@ -44,6 +44,21 @@ func doWriteFile(data string, programId string, header http.Header, c *gin.Conte
 	c.IndentedJSON(http.StatusOK, res)
 }
 
+func doGetFile(data string, programId string, header http.Header, c *gin.Context, filename string) {
+
+	filePath, err := dockerserver.TheServer.GetFile(data, programId, filename)
+	if err != nil {
+		c.IndentedJSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.File(filePath)
+
+	go func() {
+		os.Remove(filePath)
+	}()
+}
+
 func createSession(c *gin.Context) {
 	jsonData, err := c.GetRawData()
 
@@ -74,6 +89,22 @@ func writeFile(c *gin.Context) {
 
 	defer logExecutionError()
 	doWriteFile(config, prId, h, c, filename)
+}
+
+func getFile(c *gin.Context) {
+	jsonData, err := c.GetRawData()
+
+	if err != nil {
+		c.IndentedJSON(http.StatusInternalServerError, nil)
+		return
+	}
+	h := c.Request.Header
+	prId := h["Programid"][0]
+	filename := h["Filename"][0]
+	config := string(jsonData[:])
+
+	defer logExecutionError()
+	doGetFile(config, prId, h, c, filename)
 }
 
 func stopSession(c *gin.Context) {
@@ -109,6 +140,7 @@ func main() {
 	router.POST("/create", createSession)
 	router.POST("/stop", stopSession)
 	router.POST("/writeFile", writeFile)
+	router.GET("/getFile", getFile)
 
 	router.Run(dockerserver.TheServer.GetAddress())
 

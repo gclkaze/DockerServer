@@ -23,6 +23,7 @@ type DockerServer struct {
 	applicationFileName string
 	workingDirectory    string
 	jobsPrefix          string
+	wsFolder            string
 	logger              *stdlogger.STDLogger
 	ready               *AtomicBool
 	port                int
@@ -75,6 +76,8 @@ func (server *DockerServer) Load() bool {
 	}
 
 	server.jobsPrefix = server.properties.GetString("jobsPrefix", "")
+	server.wsFolder = server.properties.GetString("wsFolder", "")
+
 	jobs, err := server.GetCurrentDockerSessions()
 
 	if err != nil {
@@ -347,6 +350,27 @@ func (server *DockerServer) WriteFile(content string, programId string, filename
 	theCmd := "docker exec " + job.Names + ` bash -c`
 	res, err := server.executeVectorCommand(theCmd, "echo \""+content+"\" > "+filename)
 	return res, err
+}
+
+func (server *DockerServer) GetFile(content string, programId string, filename string) (string, error) {
+	name := server.jobsPrefix + programId
+	job := server.findJobAssociatedWithName(name)
+	if job == nil {
+		return "", fmt.Errorf("No such docker job " + name)
+	}
+	tmpFile, err := os.CreateTemp(".", "eva-tmp-*")
+	if err != nil {
+		return "", err
+	}
+
+	theCmd := "docker cp " + job.Names + ":" + server.wsFolder + "/" + filename + " " + tmpFile.Name()
+	tmpFile.Close()
+	_, err = server.executeCommand(theCmd)
+	if err != nil {
+		os.Remove(tmpFile.Name())
+		return "", err
+	}
+	return tmpFile.Name(), err
 }
 
 func (server *DockerServer) EliminateContainer(name string) (bool, error) {
